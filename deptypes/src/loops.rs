@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use generativity::{make_guard, Guard, Id};
+use generativity::{make_guard, Guard};
 
 use crate::{kinds::{Term2S, L2S, L2S_}, int::{uint::{uint_as_succ, UInt}, Succ, Zero}, term::{Term, Value}, transmutable::coerce, var::Var};
 
@@ -8,24 +8,17 @@ pub fn until_err<'n, S: L2S, R>(initial: S::Type<'n>, mut body: impl for<'a, 'b>
     -> Result<S::Type<'b>, R>) -> R {
     make_guard!(l);
     let l = l.into();
-    let mut initial = coerce(initial, S::equiv());
+    // SAFETY: this is equivalent to passing the Guard from make_guard directly
+    let mut state = coerce(initial, S::equiv(unsafe {Guard::new(l)}));
     loop {
         make_guard!(b);
-        match until_err_inner::<S, R>(l, b, initial, &mut body) {
-            Ok(next) => initial = next,
+        match body(b, state) {
+            Ok(next) => {
+                // SAFETY: 'l is no longer used since the call to body consumed state that was the only user
+                state = coerce(next, S::equiv(unsafe {Guard::new(l)}));
+            }
             Err(res) => break res
-        }
-    }
-}
-
-fn until_err_inner<'l, 'g, S: L2S, R>(_l: Id<'l>, g: Guard<'g>, state: S::Type<'l>, mut body: impl for<'a, 'b> FnMut(Guard<'b>, S::Type<'a>)
-    -> Result<S::Type<'b>, R>) -> Result<S::Type<'l>, R> {
-    match body(g, state) {
-        Ok(next) => {
-            let next = coerce(next, S::equiv());
-            Ok(next)
-        }
-        Err(res) => Err(res)
+        };
     }
 }
 

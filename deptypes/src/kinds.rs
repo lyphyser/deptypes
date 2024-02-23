@@ -1,10 +1,12 @@
+use generativity::Guard;
+
 use crate::{term::{Term, ValueEq}, transmutable::Equiv};
 
-/// SAFETY: Self::Type<'a> must be transmutable between lifetimes
+/// SAFETY: Self::Type<'a> must be transmutable from any lifetime to an unique lifetime
 pub unsafe trait L2S {
     type Type<'a>: Sized;
 
-    fn equiv<'a, 'b>() -> Equiv<Self::Type<'a>, Self::Type<'b>> {
+    fn equiv<'a, 'b>(_b: Guard<'b>) -> Equiv<Self::Type<'a>, Self::Type<'b>> {
         unsafe {Equiv::axiom()}
     }    
 }
