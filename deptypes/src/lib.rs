@@ -1,8 +1,7 @@
 #![no_std]
-#![recursion_limit = "256"]
 
-#![cfg_attr(feature = "gat", feature(generic_associated_types))]
 #![cfg_attr(feature = "never", feature(never_type))]
+#![cfg_attr(feature = "trusted_len", feature(trusted_len))]
 
 #[cfg(feature = "std")]
 extern crate alloc;
@@ -15,34 +14,34 @@ pub mod linkerror;
 #[macro_use]
 pub mod newtype;
 
+#[macro_use]
+pub mod zst;
+
 pub use generativity as guard;
 pub use generativity::make_guard as make_guard;
 
-pub mod total;
-
 #[macro_use]
 pub mod type_eq;
-pub mod transmutable;
 
-pub mod uninhabited;
+#[macro_use]
+pub mod transmutable;
 
 #[macro_use]
 pub mod term;
 pub mod var;
 pub mod ops;
-pub mod uint;
+pub mod int;
 pub mod bool;
-#[cfg(feature = "gat")]
-pub mod induction;
 pub mod slice;
 pub mod fin;
-#[cfg(feature = "gat")]
+pub mod unreachable;
 pub mod iter;
 pub mod pair;
 pub mod result;
+pub mod loops;
+pub mod kinds;
 
 #[cfg(feature = "std")]
-#[cfg(feature = "gat")]
 pub mod vec;
 
 /// For usage by macro-generated code

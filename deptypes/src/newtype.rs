@@ -3,10 +3,11 @@ pub unsafe trait NewType: core::ops::Deref  {
     fn into_inner(self) -> Self::Target;
 }
 
+#[macro_export]
 macro_rules! impl_newtype {
-    (impl [$($A:tt)*] [$($B:tt)*] $T:ident ($V:ty) where [$($AW:tt)*] [$($BW:tt)*]) => {
+    (impl [$($A:tt)*] [$($B:tt)*] $T:ident ($V:ty) $(where [$($AW:tt)*] [$($BW:tt)*])?) => {
         impl<$($A)*> Clone for $T<$($A)*>
-            where $V: Clone, $($AW)*
+            where $($($AW)*, )? $V: Clone
         {
             fn clone(&self) -> Self {
                 unsafe {Self::new_unchecked(self.0.clone())}
@@ -14,19 +15,11 @@ macro_rules! impl_newtype {
         }
 
         impl<$($A)*> Copy for $T<$($A)*>
-            where $V: Copy, $($AW)*
+            where $($($AW)*, )? $V: Copy
         {}
 
-        impl<$($A)*> core::fmt::Debug for $T<$($A)*>
-            where $V: core::fmt::Debug, $($AW)*
-        {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
-                self.0.fmt(f)
-            }
-        }
-
         impl<$($A)*> core::fmt::Display for $T<$($A)*>
-            where $V: core::fmt::Display, $($AW)*
+            where $($($AW)*, )? $V: core::fmt::Display
         {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
                 self.0.fmt(f)
@@ -34,7 +27,7 @@ macro_rules! impl_newtype {
         }
 
         impl<$($A)*, $($B)*> PartialOrd<$T<$($B)*>> for $T<$($A)*>
-        where $V: PartialOrd<<$T<$($B)*> as core::ops::Deref>::Target>, $($AW)*, $($BW)*
+        where $($($AW)*, )? $($($BW)*, )? $V: PartialOrd<<$T<$($B)*> as core::ops::Deref>::Target>
         {
             fn partial_cmp(&self, other: &$T<$($B)*>) -> Option<core::cmp::Ordering> {
                 self.0.partial_cmp(other)
@@ -58,7 +51,7 @@ macro_rules! impl_newtype {
         }
 
         impl<$($A)*> Ord for $T<$($A)*>
-            where $V: Ord, $($AW)*
+            where $($($AW)*, )? $V: Ord
         {
             fn cmp(&self, other: &$T<$($A)*>) -> core::cmp::Ordering {
                 self.0.cmp(other)
@@ -66,7 +59,7 @@ macro_rules! impl_newtype {
         }
 
         impl<$($A)*, $($B)*> PartialEq<$T<$($B)*>> for $T<$($A)*>
-            where $V: PartialEq<<$T<$($B)*> as core::ops::Deref>::Target>, $($AW)*, $($BW)*
+            where $($($AW)*, )? $($($BW)*, )? $V: PartialEq<<$T<$($B)*> as core::ops::Deref>::Target>
         {
             fn eq(&self, other: &$T<$($B)*>) -> bool {
                 self.0.eq(&*other)
@@ -78,11 +71,11 @@ macro_rules! impl_newtype {
         }
 
         impl<$($A)*> Eq for $T<$($A)*>
-            where $V: Eq, $($AW)*
+            where $($($AW)*, )? $V: Eq
         {}
 
         impl<$($A)*> core::hash::Hash for $T<$($A)*>
-            where $V: core::hash::Hash, $($AW)*
+            where $($($AW)*, )? $V: core::hash::Hash
         {
             fn hash<H: core::hash::Hasher>(&self, hasher: &mut H) {
                 self.0.hash(hasher);
@@ -90,15 +83,16 @@ macro_rules! impl_newtype {
         }
 
         impl<$($A)*> $T<$($A)*>
-        where $V: Sized, $($AW)*
+        where $($($AW)*, )? $V: Sized
         {
-            pub unsafe fn new_unchecked(x: $V) -> Self{
+            pub const unsafe fn new_unchecked(x: $V) -> Self{
                 $T(x)
             }
         }
 
+        #[allow(dead_code)]
         impl<$($A)*> $T<$($A)*>
-        where $V: Sized, $($AW)*
+        where $($($AW)*, )? $V: Sized
         {
             // TODO: any way of implementing From?
             pub fn into_inner(self) -> $V {
@@ -107,7 +101,7 @@ macro_rules! impl_newtype {
         }
 
         unsafe impl<$($A)*> $crate::newtype::NewType for $T<$($A)*>
-        where $V: Sized, $($AW)*
+        where $($($AW)*, )? $V: Sized
         {
             unsafe fn new_unchecked(x: $V) -> Self {
                 $T(x)
@@ -128,7 +122,7 @@ macro_rules! impl_newtype {
         */
 
         impl<$($A)*> core::ops::Deref for $T<$($A)*>
-        where $($AW)* {
+        $(where $($AW)*)? {
             type Target = $V;
             fn deref(&self) -> &Self::Target {
                 &self.0

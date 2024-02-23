@@ -1,8 +1,10 @@
-use crate::term::{Term, Value, ValueEq};
+use deptypes::int::uint::{uint_as_succ, UInt};
+use deptypes::num_traits::{self, CheckedAdd};
+use deptypes::term::{Term, Value, ValueEq};
 use crate::total::TotalFn;
-use crate::transmutable::Equiv;
-use crate::uint::{Succ, WellBehavedUInt, Zero, uint_as_succ};
-use crate::guard::make_guard;
+use deptypes::transmutable::{coerce, Equiv};
+use deptypes::int::{Succ, Zero};
+use deptypes::guard::make_guard;
 use crate::uninhabited::Inhabited;
 
 // P(0) and P(x) => P(S(x)) -> for all x P(x)
@@ -22,29 +24,29 @@ pub trait Pred {
 
 // 
 pub trait InductiveStep<P: Pred>
-    where P::Arg: core::ops::Add<P::Arg, Output = P::Arg> + num_traits::One
+    where P::Arg: CheckedAdd + num_traits::One
 {
     fn call<A: Term<Type = P::Arg>>(&mut self, a: Value<A>, hyps: P::Output<A>) -> P::Output<Succ<A>>;
 }
 
 pub fn compute_by_induction<P: Pred, I: InductiveStep<P>, X: Term<Type = P::Arg>>(base: P::Output<Zero<P::Arg>>, step: &mut I, x: Value<X>) -> P::Output<X>
-    where P::Arg: WellBehavedUInt + Clone
+    where P::Arg: UInt
 {
     make_guard!(g);
     match uint_as_succ(g, x) {
         Ok((xp, eq)) => {
             let hyp = compute_by_induction(base, step, xp.clone());
             let thesis = step.call(xp, hyp);
-            P::pred_output_eq(-eq).coerce(thesis)
+            coerce(thesis, P::pred_output_eq(-eq))
         },
         Err(eq) => {
-            P::pred_output_eq(-eq).coerce(base)
+            coerce(base, P::pred_output_eq(-eq))
         }
     }
 }
 
 pub fn prove_by_induction<P: Pred, I: InductiveStep<P>, X: Term<Type = P::Arg>>(base: P::Output<Zero<P::Arg>>, step: &mut I, x: Inhabited<Value<X>>) -> Inhabited<P::Output<X>>
-    where P::Arg: WellBehavedUInt + Clone
+    where P::Arg: UInt + Clone + num_traits::Zero
 {
     x.map(unsafe {TotalFn::new(|x| compute_by_induction(base, step, x))})
 }

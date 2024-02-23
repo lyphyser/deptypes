@@ -1,0 +1,22 @@
+[package]
+name = "deptypes_extra"
+version = "0.2.0"
+authors = ["Lyphyser <lyphyser@gmail.com>"]
+license = "MIT OR Apache-2.0"
+description = "Dependent types"
+repository = "https://github.com/lyphyser/deptypes"
+homepage = "https://github.com/lyphyser/deptypes"
+documentation = "https://docs.rs/deptypes_extra"
+readme = "README.md"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+"deptypes" = {path = "../deptypes"}
+
+[features]
+default = ["std"]
+std = []
+never = []
+nightly = ["never"]

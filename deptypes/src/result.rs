@@ -4,7 +4,7 @@ use crate::bool::choose;
 use crate::guard::Guard;
 use crate::term::Value;
 use crate::var::Var;
-use crate::transmutable::{Equiv};
+use crate::transmutable::{coerce, Equiv};
 use crate::term::ValueEq;
 use crate::{bool::{False, True}, term::Term};
 
@@ -57,12 +57,14 @@ impl<'a, T, F> DResult<Var<'a, bool>, T, F> {
         match x {
             Ok(t) => {
                 let eq = Var::erase(guard);
-                let r = DResult::equiv(eq).coerce(DResult::<True, _, _>::new(t));
+                let r = DResult::<True, _, _>::new(t);
+                let r = coerce(r, DResult::equiv(eq));
                 (r, Ok(-eq))
             }
             Err(f) => {
                 let eq = Var::erase(guard);
-                let r = DResult::equiv(eq).coerce(DResult::<False, _, _>::new(f));
+                let r = DResult::<False, _, _>::new(f);
+                let r = coerce(r, DResult::equiv(eq));
                 (r, Err(-eq))
             }
         }
@@ -70,10 +72,16 @@ impl<'a, T, F> DResult<Var<'a, bool>, T, F> {
 }
 
 impl<B: Term<Type = bool>, T, F> DResult<B, T, F> {
-    pub fn into_result(x: DResult<B, T, F>, b: Value<B>) -> Result<T, F> {
+    pub fn into_result(r: DResult<B, T, F>, b: Value<B>) -> Result<T, F> {
         match choose(b) {
-            Ok(eq) => Ok(DResult::equiv(eq).coerce(x).into()),
-            Err(eq) => Err(DResult::equiv(eq).coerce(x).into()),
+            Ok(eq) => {
+                let r = coerce(r, DResult::equiv(eq));
+                Ok(r.into())
+            },
+            Err(eq) => {
+                let r = coerce(r, DResult::equiv(eq));
+                Err(r.into())
+            }
         }
     }
 }

@@ -1,26 +1,6 @@
-[package]
-name = "deptypes"
-version = "0.1.1"
-authors = ["Lyphyser <lyphyser@gmail.com>"]
-license = "MIT OR Apache-2.0"
-description = "Dependent types"
-repository = "https://github.com/lyphyser/deptypes"
-homepage = "https://github.com/lyphyser/deptypes"
-documentation = "https://docs.rs/deptypes"
-readme = "README.md"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-"num-traits" = "0.2.14"
-"generativity" = "1.0.0"
-"generics2" = "0.3.3"
-"paste" = "1.0.6"
-
-[features]
-default = ["std"]
-std = []
-gat = []
-never = []
-nightly = ["gat", "never"]
+[workspace]
+resolver = "2"
+members = [
+    "deptypes",
+    "deptypes_extra",
+]

@@ -1,15 +1,28 @@
 use core::ops::AddAssign;
 
+use num_traits::CheckedAdd;
+
 use crate::term::{Term, Value, ValueEq, ValueLe};
 use crate::transmutable::{Transm, Equiv};
-use crate::uint::WellBehavedUInt;
-use crate::ops::Add;
+use crate::ops::{Add, ConstOps};
 
 #[repr(transparent)]
 pub struct Fin<A: Term>(A::Type);
 
 impl_newtype! {
     impl [A] [B] Fin(<A as Term>::Type) where [A: Term] [B: Term]
+}
+
+impl<A: Term> core::fmt::Debug for Fin<A>
+    where A::Type: core::fmt::Debug
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+        f.write_str("Fin<")?;
+        f.write_str(core::any::type_name::<A>())?;
+        f.write_str(">(")?;
+        core::fmt::Debug::fmt(&self.0, f)?;
+        f.write_str(")")
+    }
 }
 
 impl<A: Term> Fin<A>
@@ -30,8 +43,8 @@ impl<A: Term> Fin<A>
     }
 }
 
-impl<A: Term, B: Term> core::ops::Add<Fin<B>> for Fin<A>
-    where A::Type: core::ops::Add<B::Type>, A::Type: WellBehavedUInt {
+impl<A: Term, B: Term<Type = A::Type>> core::ops::Add<Fin<B>> for Fin<A>
+    where A::Type: CheckedAdd + ConstOps {
     type Output = Fin<Add<A, B>>;
 
     fn add(self, rhs: Fin<B>) -> Self::Output {

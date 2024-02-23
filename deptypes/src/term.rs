@@ -1,5 +1,6 @@
+use core::cmp::Ordering;
 use core::marker::PhantomData;
-use crate::type_eq::{TypeEqR, TypeNeR, TypeLeR, TypeLtR, TypeNotLeR, TypeNotLtR};
+use crate::type_eq::{EqReflexive, TypeEqR, TypeGeR, TypeGtR, TypeLeR, TypeLtR, TypeNeR, TypeOrdering};
 use crate::transmutable::{Equiv, Transm};
 
 pub trait Term
@@ -7,47 +8,20 @@ pub trait Term
     type Type;
 }
 
-/// A term that has no values, used by DPair to erase values
-pub struct Erased<T> {_marker: PhantomData<fn() -> T>}
+pub struct ValueCmp {_marker: ()}
+impl_zst! {impl ValueCmp}
 
-impl<T> Term for Erased<T> {
-    type Type = T;
-}
+impl<T: Term> EqReflexive<T> for ValueCmp where T::Type: Eq {}
+const VALUE_CMP: ValueCmp = ValueCmp {_marker: ()};
 
-pub struct Def<N> {_marker: PhantomData<fn() -> N>}
+pub type ValueOrdering<X, Y> = TypeOrdering<ValueCmp, X, Y>;
 
-impl<N> Term for Def<N> {
-    type Type = N;
-}
-
-#[allow(non_snake_case)]
-pub fn Def<N>() -> Value<Def<N>>
-    where N: core::default::Default {
-    unsafe {Value::new_unchecked(N::default())}
-}
-
-impl<N> Def<N> {
-    pub fn eq() -> ValueEq<Self, Self> {
-        ValueEq::refl()
-    }
-}
-
-pub struct ValueCmp;
 pub type ValueEq<X, Y> = TypeEqR<ValueCmp, X, Y>;
 pub type ValueNe<X, Y> = TypeNeR<ValueCmp, X, Y>;
 pub type ValueLe<X, Y> = TypeLeR<ValueCmp, X, Y>;
-pub type ValueNotLe<X, Y> = TypeNotLeR<ValueCmp, X, Y>;
 pub type ValueLt<X, Y> = TypeLtR<ValueCmp, X, Y>;
-pub type ValueNotLt<X, Y> = TypeNotLtR<ValueCmp, X, Y>;
-pub type ValueGe<X, Y> = TypeLeR<ValueCmp, Y, X>;
-pub type ValueNotGe<X, Y> = TypeNotLeR<ValueCmp, Y, X>;
-pub type ValueGt<X, Y> = TypeLtR<ValueCmp, Y, X>;
-pub type ValueNotGt<X, Y> = TypeNotLtR<ValueCmp, Y, X>;
-
-#[cfg(feature = "gat")]
-pub trait Term2Term {
-    type Output<T: Term>: Term;
-}
+pub type ValueGe<X, Y> = TypeGeR<ValueCmp, X, Y>;
+pub type ValueGt<X, Y> = TypeGtR<ValueCmp, X, Y>;
 
 /// Value of term A
 /// the A::Type value is guaranteed to always be the same for a given type A and instantiation of its lifetimes (this must be respected when unsafely calling new_unchecked or unsafely implementing Eval)
@@ -58,95 +32,205 @@ impl_newtype! {
     impl [A] [B] Value(<A as Term>::Type) where [A: Term] [B: Term]
 }
 
+impl<A: Term> core::fmt::Debug for Value<A>
+    where A::Type: core::fmt::Debug
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+        f.write_str("Value<")?;
+        f.write_str(core::any::type_name::<A>())?;
+        f.write_str(">(")?;
+        core::fmt::Debug::fmt(&self.0, f)?;
+        f.write_str(")")
+    }
+}
+
+
 impl<A: Term> Value<A> {
-    pub fn equiv<B: Term<Type = A::Type>>(_: ValueEq<A, B>) -> Equiv<Value<A>, Value<B>> {
+    pub const unsafe fn definition(value: A::Type, _: &A) -> Self {
+        Value(value)
+    }
+
+    pub fn equiv_with<B: Term>(_: ValueEq<A, B>, _: Equiv<A::Type, B::Type>) -> Equiv<Value<A>, Value<B>> {
         unsafe {Equiv::axiom()}
     }
 
-    pub fn transm<B: Term>(_: ValueEq<A, B>, _: Transm<A::Type, B::Type>) -> Transm<Value<A>, Value<B>> {
+    pub fn transm_with<B: Term>(_: ValueEq<A, B>, _: Transm<A::Type, B::Type>) -> Transm<Value<A>, Value<B>> {
         unsafe {Transm::axiom()}
     }
-}
 
-/// Equivalent to match x {y => Ok, _ => Err} in a dependently typed language
-pub fn check_value<X: Term, Y: Term>(x: Value<X>, y: Value<Y>) -> Result<
-    ValueEq<X, Y>,
-    ValueNe<X, Y>
-> where X::Type: PartialEq<Y::Type> {
-    if x.into_inner() == y.into_inner() {
-        Ok(unsafe {ValueEq::axiom()})
-    } else {
-        Err(unsafe {ValueNe::axiom()})
+    pub fn equiv<B: Term<Type = A::Type>>(eq: ValueEq<A, B>) -> Equiv<Value<A>, Value<B>> {
+        Self::equiv_with(eq, Equiv::refl())
     }
 }
 
-pub fn check_value_le_or_gt<X: Term, Y: Term<Type = X::Type>>(x: Value<X>, y: Value<Y>) -> Result<
+impl<A: Term, B: Term<Type = A::Type>> From<ValueEq<A, B>> for Equiv<Value<A>, Value<B>> {
+    fn from(eq: ValueEq<A, B>) -> Self {
+        Value::equiv(eq)
+    }
+}
+
+impl<A: Term, B: Term<Type = A::Type>> From<ValueEq<A, B>> for Transm<Value<A>, Value<B>> {
+    fn from(eq: ValueEq<A, B>) -> Self {
+        Equiv::from(eq).into()
+    }
+}
+
+/// Return evidence of x == y or x != y
+pub fn value_eq<X: Term, Y: Term>(x: Value<X>, y: Value<Y>) -> Result<
+    ValueEq<X, Y>,
+    ValueNe<X, Y>
+> where X::Type: PartialEq<Y::Type>, X::Type: Eq, Y::Type: Eq {
+    if x.into_inner() == y.into_inner() {
+        Ok(ValueEq::definition(&VALUE_CMP))
+    } else {
+        Err(ValueNe::definition(&VALUE_CMP))
+    }
+}
+
+/// Return evidence of x <= y
+pub fn value_le<X: Term, Y: Term>(x: Value<X>, y: Value<Y>) -> Option<ValueLe<X, Y>>
+    where X::Type: PartialOrd<Y::Type>, X::Type: Ord, Y::Type: Ord {
+    if x.into_inner() <= y.into_inner() {
+        Some(ValueLe::definition(&VALUE_CMP))
+    } else {
+        None
+    }
+}
+
+/// Return evidence of x < y
+pub fn value_lt<X: Term, Y: Term>(x: Value<X>, y: Value<Y>) -> Option<ValueLt<X, Y>>
+    where X::Type: PartialOrd<Y::Type>, X::Type: Ord, Y::Type: Ord {
+    if x.into_inner() < y.into_inner() {
+        Some(ValueLt::definition(&VALUE_CMP))
+    } else {
+        None
+    }
+}
+
+/// Return evidence of x < y or x > y
+pub fn value_partial_cmp<X: Term, Y: Term>(x: Value<X>, y: Value<Y>) -> Result<ValueOrdering<X, Y>, ValueNe<X, Y>>
+ where X::Type: PartialOrd<Y::Type>, X::Type: Ord, Y::Type: Ord {
+    match x.into_inner().partial_cmp(&y.into_inner()) {
+        Some(ord) => Ok(ValueOrdering::definition(ord, &VALUE_CMP)),
+        None => Err(ValueNe::definition(&VALUE_CMP))
+    }
+}
+
+/// Return evidence of x <= y or x > y
+pub fn value_le_or_gt<X: Term, Y: Term<Type = X::Type>>(x: Value<X>, y: Value<Y>) -> Result<
     ValueLe<X, Y>,
     ValueGt<X, Y>
 > where X::Type: Ord {
     if x.into_inner() <= y.into_inner() {
-        Ok(unsafe {ValueLe::axiom()})
+        Ok(ValueLe::definition(&VALUE_CMP))
     } else {
-        Err(unsafe {ValueGt::axiom()})
+        Err(ValueGt::definition(&VALUE_CMP))
     }
 }
 
-pub fn check_value_le<X: Term, Y: Term>(x: Value<X>, y: Value<Y>) -> Result<
-    ValueLe<X, Y>,
-    ValueNotLe<X, Y>
-> where X::Type: PartialOrd<Y::Type> {
-    if x.into_inner() <= y.into_inner() {
-        Ok(unsafe {ValueLe::axiom()})
-    } else {
-        Err(unsafe {ValueNotLe::axiom()})
-    }
-}
-
-pub fn check_value_lt<X: Term, Y: Term>(x: Value<X>, y: Value<Y>) -> Result<
+/// Return evidence of x < y or x >= y
+pub fn value_lt_or_ge<X: Term, Y: Term<Type = X::Type>>(x: Value<X>, y: Value<Y>) -> Result<
     ValueLt<X, Y>,
-    ValueNotLt<X, Y>
-> where X::Type: PartialOrd<Y::Type> {
-    if x.into_inner() <= y.into_inner() {
-        Ok(unsafe {ValueLt::axiom()})
+    ValueGe<X, Y>
+> where X::Type: Ord {
+    if x.into_inner() < y.into_inner() {
+        Ok(ValueLt::definition(&VALUE_CMP))
     } else {
-        Err(unsafe {ValueNotLt::axiom()})
+        Err(ValueGe::definition(&VALUE_CMP))
     }
 }
+
+pub fn value_cmp<X: Term, Y: Term<Type = X::Type>>(x: Value<X>, y: Value<Y>) -> ValueOrdering<X, Y>
+ where X::Type: Ord {
+    let ord = x.into_inner().cmp(&y.into_inner());
+    ValueOrdering::definition(ord, &VALUE_CMP)
+}
+
+pub trait TotalCmp {
+    fn total_cmp(&self, other: &Self) -> Ordering;
+    fn total_lt(&self, other: &Self) -> bool;
+    fn total_le(&self, other: &Self) -> bool;
+    fn total_eq(&self, other: &Self) -> bool;
+}
+
+macro_rules! impl_total_cmp {
+    ($($T:ty)*) => {
+        $(
+            impl TotalCmp for $T {
+                fn total_cmp(&self, other: &Self) -> Ordering {self.total_cmp(other)}
+                fn total_lt(&self, other: &Self) -> bool {self.total_cmp(other) == Ordering::Less}
+                fn total_le(&self, other: &Self) -> bool {self.total_cmp(other) != Ordering::Greater}
+                fn total_eq(&self, other: &Self) -> bool {self.to_bits() == other.to_bits()}
+            }
+        )*
+    }
+}
+
+impl_total_cmp! {f32 f64}
+
+/// Return evidence of x == y or x != y. Uses total_cmp()
+pub fn total_eq<X: Term, Y: Term<Type = X::Type>>(x: Value<X>, y: Value<Y>) -> Result<
+    ValueEq<X, Y>,
+    ValueNe<X, Y>
+> where X::Type: TotalCmp {
+    if x.total_eq(&y) {
+        Ok(ValueEq::definition(&VALUE_CMP))
+    } else {
+        Err(ValueNe::definition(&VALUE_CMP))
+    }
+}
+
+/// Return evidence of x <= y or x > y
+pub fn total_le<X: Term, Y: Term<Type = X::Type>>(x: Value<X>, y: Value<Y>) -> Result<
+    ValueLe<X, Y>,
+    ValueGt<X, Y>
+> where X::Type: TotalCmp {
+    if x.total_le(&y) {
+        Ok(ValueLe::definition(&VALUE_CMP))
+    } else {
+        Err(ValueGt::definition(&VALUE_CMP))
+    }
+}
+
+/// Return evidence of x < y or x >= y
+pub fn total_lt<X: Term, Y: Term<Type = X::Type>>(x: Value<X>, y: Value<Y>) -> Result<
+    ValueLt<X, Y>,
+    ValueGe<X, Y>
+> where X::Type: TotalCmp {
+    if x.total_lt(&y) {
+        Ok(ValueLt::definition(&VALUE_CMP))
+    } else {
+        Err(ValueGe::definition(&VALUE_CMP))
+    }
+}
+
+pub fn total_cmp<X: Term, Y: Term<Type = X::Type>>(x: Value<X>, y: Value<Y>) -> ValueOrdering<X, Y>
+ where X::Type: TotalCmp {
+    let ord = x.into_inner().total_cmp(&y.into_inner());
+    ValueOrdering::definition(ord, &VALUE_CMP)
+}
+
 
 /// Define a term, consisting of:
 /// - A non-instantiable struct type `$name` implementing the Term trait
 /// - A constructor function with the same name that creates a Value<`$name`>
 /// - A `$name::eq` function that construct a ValueEq from ValueEqs for each term parameter
 /// 
-/// This macro supports both the terser and recommended fn-like syntax and the slightly more powerful struct-like syntax.
+/// SAFETY: must ensure that, for any given input terms, and for equal values, the values returned are all equal
 /// 
 /// # Example
 /// 
 /// fn-like syntax:
 /// ```rust
 /// deptypes::term! {
-///     pub fn Add(a, b) -> <a::Type as core::ops::Add<b::Type>>::Output
+///     pub fn Add(a, b) -> unsafe <a::Type as core::ops::Add<b::Type>>::Output
 ///         where a::Type: core::ops::Add<b::Type> {
 ///         core::ops::Add::add(a, b)
 ///     }
 /// }
 /// ```
 /// 
-/// struct-like syntax:
-/// ```rust
-/// use deptypes::term::Term;
-/// 
-/// deptypes::term! {
-///     pub struct Add<A: Term, B: Term>;
-/// 
-///     fn(a, b) -> <A::Type as core::ops::Add<B::Type>>::Output
-///         where A::Type: core::ops::Add<B::Type> {
-///         core::ops::Add::add(a, b)
-///     }
-/// }
-/// ```
-/// 
-/// Code generated by the macro (for the fn-like version, the struct-like code is equivalent):
+/// Code generated by the macro
 /// ```rust
 /// use core::marker::PhantomData;
 /// use deptypes::term::{Term, Value, ValueEq};
@@ -166,7 +250,7 @@ pub fn check_value_lt<X: Term, Y: Term>(x: Value<X>, y: Value<Y>) -> Result<
 ///     where a::Type: core::ops::Add<b::Type> {
 ///     let (a, b) = (a.into_inner(), b.into_inner());
 ///     let ret = {core::ops::Add::add(a, b)};
-///     unsafe {Value::new_unchecked(ret)}
+///     unsafe {Value::definition(ret, &Add {_marker: (PhantomData, PhantomData)})}
 /// }
 /// 
 /// #[allow(non_camel_case_types)]
@@ -188,7 +272,6 @@ macro_rules! term {
                 [$fn_vis]
                 $fn
                 []
-                [$crate::term::Value::new_unchecked]
             }
             $($rest)*
         }
@@ -202,19 +285,6 @@ macro_rules! term {
                 [$fn_vis]
                 $fn
                 [const]
-                [$crate::internal::transmute]
-            }
-            $($rest)*
-        }
-    };
-
-    // Struct-like Values
-    ($(#[$struct_attrs:meta])* $struct_vis:vis struct $struct:ident $($rest:tt)*) => {
-        $crate::generics_parse_raw! {
-            $crate::term_impl {
-                @struct_parse_fn
-                [[$(#[$struct_attrs])*] [$struct_vis] $struct]
-                [$struct_vis]
             }
             $($rest)*
         }
@@ -231,9 +301,8 @@ macro_rules! term_impl {
         [$fn_vis:vis]
         $fn:ident
         [$($fn_keywords:tt)*]
-        [$fn_ret:expr]
         [$fn_gen:tt $fn_arg:tt $fn_where:tt $($fn_extra:tt)*]
-        ($($param:tt)*) -> $type:ty {
+        ($($param:tt)*) -> unsafe $type:ty {
             $($body:expr);*
         }
     ) => {
@@ -244,7 +313,7 @@ macro_rules! term_impl {
                     [
                         [
                             [[$(#[$fn_attrs])*] [$fn_vis] $fn]
-                            [$(#[$fn_attrs])* #[allow(non_snake_case)]] [$fn_vis $($fn_keywords)*] $fn_ret
+                            [$(#[$fn_attrs])* #[allow(non_snake_case)]] [$fn_vis $($fn_keywords)*]
                         ]
                         $type {$($body);*}
                     ]
@@ -395,90 +464,6 @@ macro_rules! term_impl {
         }
     };
 
-    // Submacros for struct-like Values
-    (@struct_parse_fn
-        $ctx:tt
-        [$struct_vis:vis]
-        $struct:tt
-        ;
-        $(#[$fn_attrs:meta])* const fn $($rest:tt)*
-    ) => {
-        $crate::term_impl! {
-            @struct_parse_fn2
-            [$ctx [$(#[$fn_attrs])* #[allow(non_snake_case)]] [$struct_vis const] $crate::internal::transmute]
-            $struct
-            $($rest)*
-        }
-    };
-    
-    (@struct_parse_fn
-        $ctx:tt
-        [$struct_vis:vis]
-        $struct:tt
-        ;
-        $(#[$fn_attrs:meta])* fn $($rest:tt)*
-    ) => {
-        $crate::term_impl! {
-            @struct_parse_fn2
-            [$ctx [$(#[$fn_attrs])* #[allow(non_snake_case)]] [$struct_vis] $crate::term::Value::new_unchecked]
-            $struct
-            $($rest)*
-        }
-    };
-
-    (@struct_parse_fn2
-        $ctx:tt
-        [[$([$([$($struct_raw_gen:tt)*])*])?] [$([$([$($struct_raw_arg:tt)*])*])?] [$($struct_where:tt)*] $($extra:tt)*]
-        $($rest:tt)*
-        ) => {
-        $crate::generics_parse! {
-            $crate::term_impl {
-                @struct_parse_fn_body 
-                $ctx
-                [$($([$($struct_raw_gen)*])*)?] [$($([$($struct_raw_arg)*])*)?]
-                [[$(<$($($struct_raw_gen)*),*>)?] [$(<$($($struct_raw_arg)*),*>)?] [$($struct_where)*]]
-            }
-            $($rest)*
-        }
-    };
-
-    (@struct_parse_fn_body
-        $ctx:tt
-        $struct_raw_gen:tt $struct_raw_arg:tt
-        [$($struct:tt)*]
-        [$($fn_gen:tt)*] [$($fn_arg:tt)*] [$($fn_where:tt)*]
-        ($($param:ident),*) -> $type:ty {
-            $($body:expr);*
-        }
-    ) => {
-        $crate::generics_concat! {
-            $crate::term_impl {
-                @struct_concat
-                [[[$ctx $type {$($body);*}] [] [$($struct)*]] [$($param),*]]
-                $struct_raw_gen $struct_raw_arg
-            }
-            $($struct)*, [$($fn_gen)*] [$($fn_arg)*] [$($fn_where)*]
-        }
-    };
-
-    (@struct_concat
-        $ctx:tt
-        $struct_raw_gen:tt $struct_raw_arg:tt
-        [$($concat_gen:tt)*] [$($concat_arg:tt)*] [$($concat_where:tt)*]
-    ) => {
-        $crate::term_impl! {
-            @parse_generics
-            [
-                $ctx
-                [[$($concat_gen)*] [$($concat_arg)*] [$($concat_where)*]]
-            ]
-            $struct_raw_gen
-            [] [] [] []
-            [] [] [] []
-        }
-    };
-
-    // Submacros common for struct-like and fn-like Values
     (@parse_generics
         $ctx:tt
         [[const $name:ident $($tokens:tt)*] $($gen_rest:tt)*]
@@ -603,7 +588,7 @@ macro_rules! term_impl {
                             [
                                 [$($struct_attrs:tt)*] [$($struct_keywords:tt)*] $struct:ident
                             ]
-                            [$($fn_attrs:tt)*] [$($fn_keywords:tt)*] $fn_ret:expr
+                            [$($fn_attrs:tt)*] [$($fn_keywords:tt)*]
                         ]
                         $type:ty {$($body:expr);*}
                     ]
@@ -629,7 +614,9 @@ macro_rules! term_impl {
             $($concat_where)* {
             let ($($fn_arg,)*) = ($($fn_arg.into_inner(),)*);
             let ret = {$($body);*};
-            unsafe {$fn_ret(ret)}
+            unsafe {$crate::term::Value::definition(ret, &$struct {_marker: 
+                ($($crate::internal::PhantomData::<fn() -> $crate::term::Value<$Values>>,)* $($crate::internal::PhantomData<fn() -> $types>,)*)
+            })}
         }
 
         $crate::paste! {
@@ -640,4 +627,38 @@ macro_rules! term_impl {
             }
         }
     };
+}
+
+
+/// An erased term, used by DPair to erase values
+pub struct Erased<T> {_marker: PhantomData<fn() -> T>}
+
+impl<T> Term for Erased<T> {
+    type Type = T;
+}
+
+impl<T> Erased<T> {
+    /// SAFETY: must not be returned and must only be used in a way that doesn't create extra ValueEqs between non-Erased values
+    pub unsafe fn erase<U: Term<Type = T>>() -> ValueEq<U, Erased<T>> {
+        ValueEq::axiom()
+    }
+}
+
+pub struct Def<N> {_marker: PhantomData<fn() -> N>}
+
+impl<N> Term for Def<N> {
+    type Type = N;
+}
+
+#[allow(non_snake_case)]
+pub fn Def<N>() -> Value<Def<N>>
+    where N: core::default::Default {
+    unsafe {Value::definition(N::default(), &Def {_marker: PhantomData})}
+}
+
+impl<N> Def<N> {
+    pub fn eq() -> ValueEq<Self, Self>
+        where N: Eq {
+        ValueEq::refl()
+    }
 }
