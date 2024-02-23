@@ -26,11 +26,13 @@ pub fn repeat_to_zero<'n, S: Term2S<A::Type>, A: Term, F>(num: Value<A>, initial
     where A::Type: UInt, F: for<'a> FnMut(Value<Var<'a, A::Type>>, S::Type<Succ<Var<'a, A::Type>>>) -> S::Type<Var<'a, A::Type>>
 {
     #[repr(C)]
-    struct UntilState<'a, T, S: Term2S<T>, F>(F, S::Type<Var<'a, T>>, Value<Var<'a, T>>);
+    struct UntilState<T: Term, S: Term2S<T::Type>, F>(F, S::Type<T>, Value<T>);
 
-    impl<'a, T, S: Term2S<T>, F> UntilState<'a, T, S, F> {
-        fn equiv<'b>(var_eq: ValueEq<Var<'a, T>, Var<'b, T>>) -> Equiv<UntilState<'a, T, S, F>, UntilState<'b, T, S, F>> {
-            let _: (Equiv<F, F>, Equiv<S::Type<Var<'a, T>>, S::Type<Var<'b, T>>>, Equiv<Value<Var<'a, T>>, Value<Var<'b, T>>>) = (refl(), S::equiv(var_eq), Value::equiv(var_eq));
+    impl<T: Term, S: Term2S<T::Type>, F> UntilState<T, S, F> {
+        fn equiv<U: Term<Type = T::Type>>(eq: ValueEq<T, U>) -> Equiv<UntilState<T, S, F>, UntilState<U, S, F>> {
+            let _: (Equiv<F, F>, Equiv<S::Type<T>, S::Type<U>>, Equiv<Value<T>, Value<U>>) = (refl(), S::equiv(eq), Value::equiv(eq));
+            // TODO: automatically generate this and call the generated equiv
+            // SAFETY: tuple of equivs to equiv of tuple
             unsafe {Equiv::axiom()}
         }
     }
@@ -41,7 +43,7 @@ pub fn repeat_to_zero<'n, S: Term2S<A::Type>, A: Term, F>(num: Value<A>, initial
     impl<T, S: Term2S<T>, F> L2S for UntilStateFamily<T, S, F>
         where for<'a> S::Type<Var<'a, T>>: Sized,
             F: for<'a> FnMut(Value<Var<'a, T>>, S::Type<Succ<Var<'a, T>>>) -> S::Type<Var<'a, T>> {
-        type Type<'a> = UntilState<'a, T, S, F>;
+        type Type<'a> = UntilState<Var<'a, T>, S, F>;
 
         fn equiv<'a, 'b>(b: Guard<'b>) -> Equiv<Self::Type<'a>, Self::Type<'b>> {
             UntilState::equiv(Var::erase(b))
