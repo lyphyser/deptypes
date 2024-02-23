@@ -2,7 +2,7 @@ use core::marker::PhantomData;
 
 use generativity::{make_guard, Guard};
 
-use crate::{kinds::{Term2S, L2S, L2S_}, int::{uint::{uint_as_succ, UInt}, Succ, Zero}, term::{Term, Value}, transmutable::coerce, var::Var};
+use crate::{int::{uint::{uint_as_succ, UInt}, Succ, Zero}, kinds::{Term2S, L2S, L2S_}, term::{Term, Value, ValueEq}, transmutable::{coerce, Equiv}, type_eq::refl, var::Var};
 
 pub fn until_err<'n, S: L2S, R>(initial: S::Type<'n>, mut body: impl for<'a, 'b> FnMut(Guard<'b>, S::Type<'a>)
     -> Result<S::Type<'b>, R>) -> R {
@@ -28,12 +28,24 @@ pub fn repeat_to_zero<'n, S: Term2S<A::Type>, A: Term, F>(num: Value<A>, initial
     #[repr(C)]
     struct UntilState<'a, T, S: Term2S<T>, F>(F, S::Type<Var<'a, T>>, Value<Var<'a, T>>);
 
+    impl<'a, T, S: Term2S<T>, F> UntilState<'a, T, S, F> {
+        fn equiv<'b>(var_eq: ValueEq<Var<'a, T>, Var<'b, T>>) -> Equiv<UntilState<'a, T, S, F>, UntilState<'b, T, S, F>> {
+            let _: (Equiv<F, F>, Equiv<S::Type<Var<'a, T>>, S::Type<Var<'b, T>>>, Equiv<Value<Var<'a, T>>, Value<Var<'b, T>>>) = (refl(), S::equiv(var_eq), Value::equiv(var_eq));
+            unsafe {Equiv::axiom()}
+        }
+    }
+
     struct UntilStateFamily<T, S: Term2S<T>, F>(PhantomData<(T, S, F)>);
 
-    unsafe impl<T, S: Term2S<T>, F> L2S for UntilStateFamily<T, S, F>
+    // SAFETY: Considering transmute-eq to a unique lifetime, Var<'a, T> is equivalent due to Var::erase, S::Type due to Term2S definition, and Value due to Value::equiv
+    impl<T, S: Term2S<T>, F> L2S for UntilStateFamily<T, S, F>
         where for<'a> S::Type<Var<'a, T>>: Sized,
             F: for<'a> FnMut(Value<Var<'a, T>>, S::Type<Succ<Var<'a, T>>>) -> S::Type<Var<'a, T>> {
         type Type<'a> = UntilState<'a, T, S, F>;
+
+        fn equiv<'a, 'b>(b: Guard<'b>) -> Equiv<Self::Type<'a>, Self::Type<'b>> {
+            UntilState::equiv(Var::erase(b))
+        }
     }
 
     fn ue_body<'a, 'b, T, S: Term2S<T>, F>(b: Guard<'b>, UntilState(mut f, state, num): L2S_<'a, UntilStateFamily<T, S, F>>)
