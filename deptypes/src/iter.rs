@@ -17,7 +17,7 @@ use crate::term::{Term, Value, ValueEq};
 use crate::var::Var;
 use crate::int::{Pred, Succ, Zero};
 
-/// SAFETY: Iter<L> must be transmutable to/from Iter<L2> where L and L2 are value-eq. This means it should be #[repr(C)] or #[repr(transparent)] or ZST
+/// SAFETY: You must either implement equiv yourself, or Iter<L> must be transmutable to/from Iter<L2> where L and L2 are value-eq. This means it should be #[repr(C)] or #[repr(transparent)] or ZST
 pub unsafe trait DLIterFamily {
     type LengthType: UInt;
     type Iter<L: Term<Type = Self::LengthType>>: DLIter<LengthType = Self::LengthType, Family = Self, Length = L>;

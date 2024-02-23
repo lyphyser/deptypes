@@ -2,6 +2,7 @@ use generativity::Guard;
 
 use crate::{term::{Term, ValueEq}, transmutable::Equiv};
 
+/// This is always implementable for any family provided that the lifetime is only used as an identifier
 pub trait L2S {
     type Type<'a>: Sized;
 
@@ -10,7 +11,9 @@ pub trait L2S {
 
 pub type L2S_<'a, S> = <S as L2S>::Type<'a>;
 
-/// SAFETY: Self::Type must be transmutable between ValueEq-equivalent terms.  This means it should be #[repr(C)] or #[repr(transparent)] or ZST.
+/// SAFETY: Self::Type must be transmutable between ValueEq-equivalent terms.  This means it should be #[repr(C)] or #[repr(transparent)] or ZST and must not do pathological things like using something that specializes on the term and provides imcompatible associated types for different terms.
+///
+/// We could also make this trait safe and remove the default implementation of equiv
 pub unsafe trait Term2S<T> {
     type Type<U: Term<Type = T>>: Sized;
 
