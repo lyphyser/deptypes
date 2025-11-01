@@ -2,6 +2,8 @@
 
 #![cfg_attr(feature = "never", feature(never_type))]
 #![cfg_attr(feature = "trusted_len", feature(trusted_len))]
+#![cfg_attr(feature = "super_let", feature(super_let))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[cfg(feature = "std")]
 extern crate alloc;
@@ -17,8 +19,13 @@ pub mod newtype;
 #[macro_use]
 pub mod zst;
 
-pub use generativity as guard;
-pub use generativity::make_guard as make_guard;
+pub mod guard;
+pub use crate::guard::make_guard as make_guard;
+
+#[cfg(feature = "super_let")]
+#[cfg_attr(docsrs, doc(cfg(feature = "super_let")))]
+#[doc(inline)]
+pub use crate::guard::guard as g;
 
 #[macro_use]
 pub mod type_eq;
