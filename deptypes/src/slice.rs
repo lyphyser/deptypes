@@ -87,11 +87,21 @@ impl<T, L: Term> DSlice<T, L> {
     }
 
     pub fn iter(&self) -> DSliceIter<'_, T, L> {
-        DSliceIter {ptr: unsafe {NonNull::new_unchecked(&self.1[0] as *const T as *mut T)}, _marker: PhantomData}
+        let ptr = if core::mem::size_of::<T>() == 0 {
+            NonNull::dangling()
+        } else {
+            unsafe { NonNull::new_unchecked(self as *const _ as *const T as *mut T) }
+        };
+        DSliceIter { ptr, _marker: PhantomData }
     }
 
     pub fn iter_mut(&mut self) -> DSliceIterMut<'_, T, L> {
-        DSliceIterMut {ptr: unsafe {NonNull::new_unchecked(&self.1[0] as *const T as *mut T)}, _marker: PhantomData}
+        let ptr = if core::mem::size_of::<T>() == 0 {
+            NonNull::dangling()
+        } else {
+            unsafe { NonNull::new_unchecked(self as *mut _ as *mut T) }
+        };
+        DSliceIterMut { ptr, _marker: PhantomData }
     }
 }
 
